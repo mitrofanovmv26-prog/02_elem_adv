@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Структурные элементы рекламного объявления</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #f2f4f7;
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+
+  .wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .title-block {
+    text-align: center;
+    margin-bottom: 16px;
+    font-weight: 600;
+    color: #212529;
+  }
+
+  /* Большой прямоугольник — рабочая область */
+  .ad-canvas {
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+    aspect-ratio: 3 / 2;      /* соотношение сторон холста */
+    background: #ffffff;
+    border: 2px solid #343a40;
+    border-radius: 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.1);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Сетка третей */
+  .thirds-line {
+    position: absolute;
+    background: rgba(220, 53, 69, 0.35);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .thirds-line.vertical   { top: 0; bottom: 0; width: 1px; }
+  .thirds-line.horizontal { left: 0; right: 0; height: 1px; }
+  .thirds-line.v1 { left: 33.3333%; }
+  .thirds-line.v2 { left: 66.6666%; }
+  .thirds-line.h1 { top: 33.3333%; }
+  .thirds-line.h2 { top: 66.6666%; }
+
+  /* Перетаскиваемый блок */
+  .ad-block {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: grab;
+    z-index: 2;
+    touch-action: none;       /* важно для touch-событий */
+    box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    transition: box-shadow .15s, transform .1s;
+    padding: 6px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .ad-block:active { cursor: grabbing; }
+  .ad-block.dragging {
+    box-shadow: 0 10px 25px rgba(0,0,0,.35);
+    transform: scale(1.02);
+    z-index: 100;
+  }
+  .ad-block .num {
+    display: block;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .ad-block .label {
+    display: none;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .ad-block.open .label { display: block; }
+  .ad-block.open .num   { font-size: 14px; }
+
+  /* Цвета блоков */
+  .b1 { background: #0d6efd; }
+  .b2 { background: #6f42c1; }
+  .b3 { background: #d63384; }
+  .b4 { background: #fd7e14; }
+  .b5 { background: #198754; }
+  .b6 { background: #20c997; }
+  .b7 { background: #6610f2; }
+  .b8 { background: #dc3545; }
+
+  .hint {
+    font-size: 13px;
+    color: #6c757d;
+    margin-top: 12px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+  <div class="title-block">Структурные элементы рекламного объявления</div>
+
+  <div class="ad-canvas" id="adCanvas">
+    <div class="thirds-line vertical v1"></div>
+    <div class="thirds-line vertical v2"></div>
+    <div class="thirds-line horizontal h1"></div>
+    <div class="thirds-line horizontal h2"></div>
+  </div>
+
+  <div class="hint">
+    Перетаскивайте блоки мышью или пальцем. Двойной клик — показать/скрыть название.
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function () {
+  const canvas = document.getElementById('adCanvas');
+
+  // Данные о блоках: номер, название, класс цвета, стартовые позиции в %
+  const blocksData = [
+    { num: 1, label: "Логотип",          cls: "b1", x: 5,  y: 5,  w: 18, h: 14 },
+    { num: 2, label: "Заголовок",        cls: "b2", x: 28, y: 5,  w: 40, h: 14 },
+    { num: 3, label: "Подзаголовок",     cls: "b3", x: 5,  y: 24, w: 63, h: 10 },
+    { num: 4, label: "Изображение",      cls: "b4", x: 5,  y: 38, w: 63, h: 30 },
+    { num: 5, label: "Основной текст",   cls: "b5", x: 5,  y: 72, w: 63, h: 20 },
+    { num: 6, label: "Кнопка (CTA)",     cls: "b6", x: 72, y: 5,  w: 23, h: 12 },
+    { num: 7, label: "Преимущества",     cls: "b7", x: 72, y: 22, w: 23, h: 30 },
+    { num: 8, label: "Контакты",         cls: "b8", x: 72, y: 58, w: 23, h: 34 }
+  ];
+
+  let blocks = [];          // {el, x, y, w, h} — проценты
+  const MIN_SIZE = 4;       // минимальный размер в % (защита от выхода за границы)
+
+  function clamp(v, min, max) {
+    return Math.min(Math.max(v, min), max);
+  }
+
+  function createBlocks() {
+    blocksData.forEach(data => {
+      const el = document.createElement('div');
+      el.className = `ad-block ${data.cls}`;
+      el.innerHTML = `<div><span class="num">${data.num}</span><span class="label">${data.label}</span></div>`;
+      canvas.appendChild(el);
+
+      const block = {
+        el,
+        x: data.x,
+        y: data.y,
+        w: data.w,
+        h: data.h
+      };
+      blocks.push(block);
+
+      // Двойной клик — открыть/скрыть название
+      el.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        el.classList.toggle('open');
+        // После изменения размера контента пересчитываем — но размеры в % задаются,
+        // поэтому позиция не съедет. Однако для надёжности применим позицию.
+        applyPosition(block);
+      });
+
+      // Инициализация событий перетаскивания
+      makeDraggable(block);
+    });
+
+    // Раскладываем по стартовым позициям
+    blocks.forEach(applyPosition);
+  }
+
+  function applyPosition(block) {
+    block.el.style.left   = block.x + '%';
+    block.el.style.top    = block.y + '%';
+    block.el.style.width  = block.w + '%';
+    block.el.style.height = block.h + '%';
+  }
+
+  function makeDraggable(block) {
+    const el = block.el;
+    let pointerId = null;
+    let startClientX = 0, startClientY = 0;
+    let startX = 0, startY = 0;
+    let rect = null;
+
+    function onPointerDown(e) {
+      // Только левая кнопка мыши / основной палец
+      if (e.button !== undefined && e.button !== 0) return;
+
+      // Двойной клик не должен начинать перетаскивание
+      // (но pointerdown происходит раньше dblclick — не мешаем)
+      pointerId = e.pointerId;
+      el.setPointerCapture(pointerId);
+
+      const canvasRect = canvas.getBoundingClientRect();
+      rect = canvasRect;
+
+      startClientX = e.clientX;
+      startClientY = e.clientY;
+      startX = block.x;
+      startY = block.y;
+
+      el.classList.add('dragging');
+      e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+      if (pointerId === null || e.pointerId !== pointerId || !rect) return;
+
+      const dxPx = e.clientX - startClientX;
+      const dyPx = e.clientY - startClientY;
+
+      const dxPct = (dxPx / rect.width) * 100;
+      const dyPct = (dyPx / rect.height) * 100;
+
+      block.x = clamp(startX + dxPct, 0, 100 - block.w);
+      block.y = clamp(startY + dyPct, 0, 100 - block.h);
+
+      applyPosition(block);
+    }
+
+    function onPointerUp(e) {
+      if (pointerId === null) return;
+      if (e.pointerId !== pointerId) return;
+
+      try { el.releasePointerCapture(pointerId); } catch (_) {}
+      pointerId = null;
+      rect = null;
+      el.classList.remove('dragging');
+    }
+
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerUp);
+    el.addEventListener('lostpointercapture', () => {
+      pointerId = null;
+      rect = null;
+      el.classList.remove('dragging');
+    });
+  }
+
+  // Защита от выхода блоков за границы при ресайзе окна
+  function onResize() {
+    blocks.forEach(b => {
+      b.x = clamp(b.x, 0, 100 - b.w);
+      b.y = clamp(b.y, 0, 100 - b.h);
+      applyPosition(b);
+    });
+  }
+
+  window.addEventListener('resize', onResize);
+
+  createBlocks();
+})();
+</script>
+</body>
+</html>
